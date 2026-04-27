@@ -6,6 +6,7 @@ export default async function handler(req, res) {
   }
 
   try {
+
     const headers = {
       "X-Mybring-API-Uid": process.env.BRING_UID,
       "X-Mybring-API-Key": process.env.BRING_KEY,
@@ -13,7 +14,7 @@ export default async function handler(req, res) {
     };
 
     //
-    // 1 — Hent suggestions (som før)
+    // 1 — Hent suggestions (første kall)
     //
 
     const suggestionRes = await fetch(
@@ -26,14 +27,26 @@ export default async function handler(req, res) {
     let suggestions = [];
 
     if (suggestionData.addresses) {
-      suggestions = suggestionData.addresses.map(a =>
-        `${a.street_name} ${a.house_number}${a.letter || ""}, ${a.postal_place}`
-      );
+
+      suggestions = suggestionData.addresses.map(a => {
+
+        const city =
+          a.postal_place ||
+          a.city ||
+          "";
+
+        const postal =
+          a.postal_code ||
+          "";
+
+        return `${a.street_name} ${a.house_number}${a.letter || ""}, ${postal} ${city}`.trim();
+
+      });
+
     }
 
     //
     // 2 — Sjekk om bruker skrev gate + nummer
-    // (f.eks "Camilla Colletts vei 11")
     //
 
     const parsed = q.match(/^(.*?)(\d+)\s*([a-zA-Z]?)$/);
@@ -46,7 +59,7 @@ export default async function handler(req, res) {
       const number = parsed[2];
 
       //
-      // 3 — Hent alle bokstav-varianter (11A, 11B osv.)
+      // 3 — Hent bokstav-varianter (andre kall)
       //
 
       const addressUrl =
@@ -61,10 +74,23 @@ export default async function handler(req, res) {
 
       if (addressData.addresses) {
 
-        extraSuggestions = addressData.addresses.map(a =>
-          `${a.street_name} ${a.house_number}${a.letter || ""}, ${a.postal_place}`
-        );
+        extraSuggestions = addressData.addresses.map(a => {
+
+          const city =
+            a.postal_place ||
+            a.city ||
+            "";
+
+          const postal =
+            a.postal_code ||
+            "";
+
+          return `${a.street_name} ${a.house_number}${a.letter || ""}, ${postal} ${city}`.trim();
+
+        });
+
       }
+
     }
 
     //
@@ -76,10 +102,13 @@ export default async function handler(req, res) {
       ...extraSuggestions
     ];
 
-    const uniqueSuggestions = [...new Set(combined)];
+    const uniqueSuggestions =
+      [...new Set(combined)]
+      .filter(Boolean)
+      .slice(0, 8); // maks 8 forslag
 
     //
-    // 5 — Returner samme struktur hver gang
+    // 5 — Returner resultat
     //
 
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -90,11 +119,12 @@ export default async function handler(req, res) {
 
   } catch (error) {
 
-    console.error(error);
+    console.error("API error:", error);
 
     res.status(500).json({
       error: "Server error",
       details: error.message
     });
+
   }
 }
